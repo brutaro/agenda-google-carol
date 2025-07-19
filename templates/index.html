@@ -262,8 +262,7 @@
                 const response = await fetch('/comando-voz', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true'
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ comando: texto })
                 });
@@ -290,11 +289,7 @@
             const statusDiv = document.getElementById('status');
             
             try {
-                const response = await fetch('/eventos', {
-                    headers: {
-                        'ngrok-skip-browser-warning': 'true'
-                    }
-                });
+                const response = await fetch('/eventos');
                 const data = await response.json();
                 console.log('Resposta da API:', data); // Log para debug
                 
@@ -323,7 +318,7 @@
                     statusDiv.textContent = 'Não há eventos para exibir.';
                 }
             } catch (error) {
-                console.error('Erro completo:', error); // Log detalhado do erro
+                console.error('Erro completo:', error);
                 statusDiv.textContent = 'Erro ao atualizar eventos.';
             }
         }
