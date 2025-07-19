@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assistente de Agenda</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .controles {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background-color: #3498db;
+            color: white;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+        }
+        
+        #btnGravar {
+            background-color: #2ecc71;
+        }
+        
+        #btnGravar.gravando {
+            background-color: #e74c3c;
+            animation: pulse 1.5s infinite;
+        }
+        
+        #comandoTexto {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            min-width: 200px;
+        }
+        
+        #status {
+            padding: 15px;
+            border-radius: 5px;
+            background-color: white;
+            margin: 20px 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .eventos {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .evento {
+            background-color: #f8f9fa;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .evento:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            
+            .controles {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            #comandoTexto {
+                width: 100%;
+                min-width: unset;
+            }
+            
+            button {
+                width: 100%;
+            }
+            
+            .evento {
+                padding: 10px;
+                font-size: 14px;
+            }
+        }
+</style>
+</head>
+<body>
+    <h1>Assistente de Agenda</h1>
+    
+    <div class="controles">
+        <button onclick="window.location.href='/login'">Login com Google</button>
+        <button onclick="atualizarEventos()">Atualizar Eventos</button>
+        <input type="text" id="comandoTexto" placeholder="Digite seu comando ou clique no microfone para falar...">
+        <button onclick="enviarComando()">Enviar</button>
+        <button id="btnGravar" onclick="toggleGravacao()">
+            <i class="fas fa-microphone"></i> Gravar
+        </button>
+    </div>
+
+    <div id="status"></div>
+
+    <div class="eventos">
+        <h2>Próximos Eventos</h2>
+        <div id="lista-eventos"></div>
+    </div>
+
+    <script src="https://kit.fontawesome.com/a076d05399.js"></script>
+    <script>
+        let recognition = null;
+        let gravando = false;
+
+        // Inicializar reconhecimento de voz
+        try {
+            window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.lang = 'pt-BR';
+            recognition.continuous = false;
+            recognition.interimResults = true;  // Habilitar resultados intermediários
+            recognition.maxAlternatives = 1;
+        
+            let finalTranscript = '';
+            let isFinished = false;
+            let finishTimer = null;
+        
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+                let silenceTimer = null;
+                const silenceDelay = 2000; // Aumentar para 2 segundos de silêncio
+                
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript = transcript;
+                        document.getElementById('comandoTexto').value = finalTranscript;
+                        
+                        // Limpar o timer anterior se existir
+                        if (silenceTimer) clearTimeout(silenceTimer);
+                        
+                        // Iniciar novo timer para aguardar silêncio
+                        silenceTimer = setTimeout(() => {
+                            pararGravacao();
+                            setTimeout(() => {
+                                enviarComando();
+                            }, 500);
+                        }, silenceDelay);
+                    } else {
+                        interimTranscript = transcript;
+                        document.getElementById('comandoTexto').value = 'Ouvindo: ' + interimTranscript;
+                        
+                        // Resetar o timer quando houver nova fala
+                        if (silenceTimer) clearTimeout(silenceTimer);
+                    }
+                }
+            };
+        
+            // Adicionar detecção de silêncio
+            recognition.onspeechend = () => {
+                // Aguardar um pouco mais antes de parar
+                setTimeout(() => {
+                    if (gravando) {
+                        pararGravacao();
+                    }
+                }, 1500);
+            };
+        
+            // Melhorar o tratamento de erros
+            recognition.onerror = (event) => {
+                if (event.error === 'no-speech') {
+                    document.getElementById('status').textContent = 'Nenhuma fala detectada. Tente novamente.';
+                } else {
+                    console.error('Erro no reconhecimento:', event.error);
+                    document.getElementById('status').textContent = 'Erro no reconhecimento de voz. Tente novamente.';
+                }
+                pararGravacao();
+            };
+        
+            recognition.onend = () => {
+                if (!isFinished) {
+                    pararGravacao();
+                }
+            };
+        } catch (e) {
+            console.error('Reconhecimento de voz não suportado:', e);
+        }
+
+        function toggleGravacao() {
+            if (!recognition) {
+                alert('Seu navegador não suporta reconhecimento de voz.');
+                return;
+            }
+
+            if (!gravando) {
+                iniciarGravacao();
+            } else {
+                pararGravacao();
+            }
+        }
+
+        function iniciarGravacao() {
+            gravando = true;
+            const btnGravar = document.getElementById('btnGravar');
+            btnGravar.classList.add('gravando');
+            btnGravar.innerHTML = '<i class="fas fa-microphone-slash"></i> Gravando...';
+            recognition.start();
+        }
+
+        function pararGravacao() {
+            gravando = false;
+            const btnGravar = document.getElementById('btnGravar');
+            btnGravar.classList.remove('gravando');
+            btnGravar.innerHTML = '<i class="fas fa-microphone"></i> Gravar';
+            try {
+                recognition.stop();
+            } catch (e) {}
+        }
+
+        async function enviarComandoVoz(texto) {
+            try {
+                const response = await fetch('/comando-voz', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': 'true'
+                    },
+                    body: JSON.stringify({ comando: texto })
+                });
+                
+                const data = await response.json();
+                
+                if (data.erro) {
+                    statusDiv.textContent = `Erro: ${data.erro}`;
+                } else {
+                    statusDiv.textContent = data.mensagem;
+                    await atualizarEventos(); // Atualiza a lista após processar o comando
+                }
+            } catch (error) {
+                statusDiv.textContent = 'Erro ao processar comando.';
+                console.error('Erro:', error);
+            }
+            
+            // Limpa o campo de texto
+            document.getElementById('comandoTexto').value = '';
+        }
+
+        async function atualizarEventos() {
+            const listaEventos = document.getElementById('lista-eventos');
+            const statusDiv = document.getElementById('status');
+            
+            try {
+                const response = await fetch('/eventos', {
+                    headers: {
+                        'ngrok-skip-browser-warning': 'true'
+                    }
+                });
+                const data = await response.json();
+                console.log('Resposta da API:', data); // Log para debug
+                
+                listaEventos.innerHTML = '';
+                if (data.eventos && data.eventos.length > 0) {
+                    console.log('Eventos encontrados:', data.eventos.length); // Log para debug
+                    data.eventos.forEach(evento => {
+                        const div = document.createElement('div');
+                        div.className = 'evento';
+                        const inicio = evento.start.dateTime || evento.start.date;
+                        console.log('Data do evento:', inicio); // Log para debug
+                        const dataFormatada = new Date(inicio).toLocaleString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                        div.textContent = `${evento.summary} - ${dataFormatada}`;
+                        listaEventos.appendChild(div);
+                    });
+                    statusDiv.textContent = 'Eventos atualizados com sucesso!';
+                } else {
+                    console.log('Nenhum evento encontrado'); // Log para debug
+                    listaEventos.innerHTML = '<p>Nenhum evento encontrado.</p>';
+                    statusDiv.textContent = 'Não há eventos para exibir.';
+                }
+            } catch (error) {
+                console.error('Erro completo:', error); // Log detalhado do erro
+                statusDiv.textContent = 'Erro ao atualizar eventos.';
+            }
+        }
+
+        // Carregar eventos ao iniciar
+        atualizarEventos();
+    </script>
+</body>
+</html>
