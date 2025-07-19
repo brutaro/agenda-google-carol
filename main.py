@@ -30,12 +30,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Atualizar a rota raiz para retornar HTMLResponse
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    response = templates.TemplateResponse(
+    return templates.TemplateResponse(
         "index.html",
         {"request": request}
     )
-    response.headers["ngrok-skip-browser-warning"] = "true"
-    return response
 
 # Se modificar estes escopos, delete o arquivo token.pickle
 SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -68,7 +66,7 @@ def ouvir():
 flow = Flow.from_client_secrets_file(
     'client_secret_208149794146-eqenuk56dvgi0mnjegmgrj2qt5usfduu.apps.googleusercontent.com.json',
     scopes=['https://www.googleapis.com/auth/calendar'],
-    redirect_uri='https://seu-id.ngrok.app/oauth2callback'  # Substitua pela sua URL do ngrok
+    redirect_uri=os.getenv('RAILWAY_PUBLIC_DOMAIN', 'http://localhost:8000') + '/oauth2callback'
 )
 
 @app.get("/login")
@@ -391,4 +389,5 @@ def processar_data_hora(data_hora_str):
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv('PORT', 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
