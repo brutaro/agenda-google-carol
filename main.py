@@ -251,6 +251,7 @@ REGRAS DE EXTRAÇÃO (FLEXÍVEIS PARA VOZ):
    - "para discutir [texto]"
    - "tema [texto]"
    - Palavras após "assunto", "sobre", "tema"
+   - IMPORTANTE: Extraia TUDO que vem após essas palavras-chave
 
 3. **DATA**: Reconheça:
    - "dia X de [mes]" ou "no dia X"
@@ -266,12 +267,17 @@ REGRAS DE EXTRAÇÃO (FLEXÍVEIS PARA VOZ):
    - Converta: "5 da tarde" = "17:00", "8 da manha" = "08:00"
    - Formato: HH:MM
 
-5. **DURAÇÃO**: Reconheça:
-   - "1h", "uma hora", "1 hora" = 60 minutos
-   - "30min", "meia hora", "30 minutos" = 30 minutos
-   - "2h", "duas horas", "2 horas" = 120 minutos
-   - "duracao X" (com ou sem dois pontos)
-   - Padrão: 30 minutos
+5. **DURAÇÃO**: ATENÇÃO ESPECIAL!
+   - "1h" = 60 minutos (NÃO 30!)
+   - "uma hora" = 60 minutos
+   - "1 hora" = 60 minutos
+   - "2h" = 120 minutos
+   - "duas horas" = 120 minutos
+   - "30min" = 30 minutos
+   - "meia hora" = 30 minutos
+   - "duracao 1h" = 60 minutos
+   - Se não especificado: 30 minutos
+   - SEMPRE converta corretamente: 1h = 60, 2h = 120, etc.
 
 6. **TÍTULO**: Sempre "Reunião com [participantes]"
 
@@ -286,17 +292,19 @@ RETORNE APENAS ESTE JSON:
 {{
     "titulo": "Reunião com [participantes]",
     "participantes": ["lista de nomes completos"],
-    "assunto": "assunto extraído",
+    "assunto": "assunto extraído COMPLETO",
     "data": "YYYY-MM-DD",
     "hora": "HH:MM",
-    "duracao": numero_em_minutos
-}}"""},
+    "duracao": numero_em_minutos_CORRETO
+}}
+
+PARA O EXEMPLO: "1h" deve resultar em "duracao": 60 (não 30!)"""},
                         {"role": "user", "content": comando}
                     ]
                 )
                 
                 detalhes_str = completion.choices[0].message.content.strip()
-                print(f"Resposta da IA: {detalhes_str}")
+                print(f"Resposta completa da IA: {detalhes_str}")
                 
                 # Extrair apenas o JSON da resposta
                 import re
@@ -304,12 +312,19 @@ RETORNE APENAS ESTE JSON:
                 if json_match:
                     detalhes_str = json_match.group()
                 
+                print(f"JSON extraído: {detalhes_str}")
                 detalhes = json.loads(detalhes_str)
+                print(f"Detalhes parseados: {json.dumps(detalhes, indent=2, ensure_ascii=False)}")
 
                 # Construir o título final
                 titulo_evento = detalhes.get('titulo', '')
                 participantes = detalhes.get('participantes', [])
                 assunto = detalhes.get('assunto', '')
+                duracao_extraida = detalhes.get('duracao', 30)
+
+                print(f"Assunto extraído: '{assunto}'")
+                print(f"Duração extraída: {duracao_extraida} minutos")
+                print(f"Participantes: {participantes}")
 
                 if participantes:
                     titulo_evento = f"Reunião com {', '.join(participantes)}"
@@ -327,11 +342,17 @@ RETORNE APENAS ESTE JSON:
                         return {"erro": "Formato de data inválido"}
                     data_hora = data_hora_convertida
                 
+                print(f"Criando evento com:")
+                print(f"  Título: '{titulo_evento}'")
+                print(f"  Data/Hora: '{data_hora}'")
+                print(f"  Duração: {duracao_extraida} minutos")
+                print(f"  Descrição/Assunto: '{assunto}'")
+                
                 evento = criar_evento(
                     service,
                     titulo_evento,
                     data_hora,
-                    detalhes.get('duracao', 30),
+                    duracao_extraida,  # Usar a variável específica
                     assunto
                 )
                 
@@ -342,7 +363,7 @@ RETORNE APENAS ESTE JSON:
                     "mensagem": f"✅ Evento '{titulo_evento}' agendado com sucesso!\n" +
                               f"📅 Início: {inicio}\n" +
                               f"⏰ Fim: {fim}\n" +
-                              f"⏱️ Duração: {detalhes.get('duracao', 30)} minutos\n" +
+                              f"⏱️ Duração: {duracao_extraida} minutos\n" +
                               f"📝 Assunto: {assunto}"
                 }
             except Exception as e:
