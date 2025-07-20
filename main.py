@@ -230,75 +230,79 @@ async def processar_comando_voz(request: Request):
                 completion = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
-                        {"role": "system", "content": f"""Você é uma secretária virtual inteligente. Analise o comando em português e extraia TODOS os detalhes para agendar um evento.
+                        {"role": "system", "content": f"""Você é uma secretária virtual especializada em agendar reuniões. Extraia TODOS os detalhes do comando de voz em português brasileiro.
 
-IMPORTANTE: O texto vem de reconhecimento de voz, então pode ter erros de pontuação, acentos ou grafia.
-
-EXEMPLO: "Ola preciso de uma reuniao com o Sr Rogerio no dia 25 de outubro as 17 horas assunto Senhora Rogeria duracao 1h"
-
-REGRAS DE EXTRAÇÃO (FLEXÍVEIS PARA VOZ):
+REGRAS DE EXTRAÇÃO:
 
 1. **PARTICIPANTES**: Procure por:
    - "reuniao com [nome]" ou "reunião com [nome]"
-   - "encontro com [nome]"
-   - "meeting com [nome]"
+   - "encontro com [nome]", "meeting com [nome]"
    - Qualquer nome após "com o", "com a", "com"
-   - Preserve títulos: Sr, Sra, Dr, Dra (com ou sem pontos)
+   - PRESERVE TÍTULOS: Sr., Sra., Dr., Dra., Senhor, Senhora, Professor, etc.
+   - Exemplo: "Sr. João" → mantenha "Sr. João"
+   - Exemplo: "Senhor Silva" → mantenha "Senhor Silva"
 
 2. **ASSUNTO**: Procure por:
    - "assunto [texto]" (com ou sem dois pontos)
-   - "sobre [texto]"
-   - "para discutir [texto]"
-   - "tema [texto]"
-   - Palavras após "assunto", "sobre", "tema"
-   - IMPORTANTE: Extraia TUDO que vem após essas palavras-chave
+   - "sobre [texto]", "para discutir [texto]", "tema [texto]"
+   - "para falar sobre [texto]", "para tratar de [texto]"
+   - Palavras após "assunto:", "sobre", "tema", "para discutir"
+   - IMPORTANTE: Extraia TUDO que vem após essas palavras-chave até o final ou próxima informação
+   - Se não encontrar palavras-chave, use o contexto geral da frase
 
 3. **DATA**: Reconheça:
-   - "dia X de [mes]" ou "no dia X"
-   - "em X de [mes]"
-   - "amanha", "hoje", "proxima semana"
+   - "dia X de [mes]" ou "no dia X", "em X de [mes]"
+   - "amanha", "hoje", "proxima semana", "segunda", "terca", etc.
    - Use ano atual: {datetime.datetime.now().year}
    - Formato: YYYY-MM-DD
 
 4. **HORÁRIO**: Reconheça:
-   - "as X horas", "as Xh", "X horas"
+   - "as X horas", "as Xh", "X horas", "Xh"
    - "X da manha/tarde/noite"
-   - "meio dia", "meia noite"
+   - "meio dia" = "12:00", "meia noite" = "00:00"
    - Converta: "5 da tarde" = "17:00", "8 da manha" = "08:00"
    - Formato: HH:MM
 
-5. **DURAÇÃO**: ATENÇÃO ESPECIAL!
-   - "1h" = 60 minutos (NÃO 30!)
+5. **DURAÇÃO**: ATENÇÃO MÁXIMA!
+   - "1h" = 60 minutos (NUNCA 30!)
    - "uma hora" = 60 minutos
    - "1 hora" = 60 minutos
    - "2h" = 120 minutos
    - "duas horas" = 120 minutos
    - "30min" = 30 minutos
    - "meia hora" = 30 minutos
+   - "1h30" = 90 minutos
    - "duracao 1h" = 60 minutos
    - Se não especificado: 30 minutos
-   - SEMPRE converta corretamente: 1h = 60, 2h = 120, etc.
+   - SEMPRE converta corretamente: 1h = 60, 2h = 120, 30min = 30
 
-6. **TÍTULO**: Sempre "Reunião com [participantes]"
+6. **TÍTULO**: Sempre "Reunião com [participantes completos com títulos]"
 
 MESES (aceite variações):
 - janeiro/jan=01, fevereiro/fev=02, marco/mar=03, abril/abr=04
 - maio=05, junho/jun=06, julho/jul=07, agosto/ago=08
 - setembro/set=09, outubro/out=10, novembro/nov=11, dezembro/dez=12
 
-SEJA INTELIGENTE: Se não encontrar pontuação exata, use o contexto das palavras.
+EXEMPLOS PRÁTICOS:
+- "reuniao com senhor silva amanha as 2 da tarde assunto vendas duracao 1h"
+  → participantes: ["Senhor Silva"], assunto: "vendas", duracao: 60
+
+- "encontro com dr joao sobre projeto novo dia 15 as 10h por 2 horas"
+  → participantes: ["Dr. João"], assunto: "projeto novo", duracao: 120
+
+SEJA INTELIGENTE: Use o contexto das palavras mesmo sem pontuação perfeita.
 
 RETORNE APENAS ESTE JSON:
 {{
-    "titulo": "Reunião com [participantes]",
-    "participantes": ["lista de nomes completos"],
+    "titulo": "Reunião com [participantes completos]",
+    "participantes": ["lista de nomes completos com títulos"],
     "assunto": "assunto extraído COMPLETO",
     "data": "YYYY-MM-DD",
     "hora": "HH:MM",
     "duracao": numero_em_minutos_CORRETO
 }}
 
-PARA O EXEMPLO: "1h" deve resultar em "duracao": 60 (não 30!)"""},
+PARA DURAÇÃO: "1h" SEMPRE = 60 minutos (não 30!)"""}
                         {"role": "user", "content": comando}
                     ]
                 )
