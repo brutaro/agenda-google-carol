@@ -36,7 +36,13 @@ async def root(request: Request):
     )
 
 # Se modificar estes escopos, delete o arquivo token.pickle
-SCOPES = ['https://www.googleapis.com/auth/calendar']
+SCOPES = [
+    'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/calendar.events',
+    'openid',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile'
+]
 
 def falar(texto):
     """Converte texto para fala"""
@@ -74,7 +80,7 @@ if os.getenv('GOOGLE_CLIENT_SECRET'):
     
     flow = Flow.from_client_secrets_file(
         client_secrets_file.name,
-        scopes=['https://www.googleapis.com/auth/calendar'],
+        scopes=SCOPES,  # <-- Usar a variável SCOPES que tem todos os escopos necessários
         redirect_uri=os.getenv('RAILWAY_PUBLIC_DOMAIN', 'http://localhost:8000') + '/oauth2callback'
     )
     os.unlink(client_secrets_file.name)  # Remove o arquivo temporário após usar
@@ -82,8 +88,8 @@ else:
     # Fallback para desenvolvimento local
     flow = Flow.from_client_secrets_file(
         'client_secret_208149794146-eqenuk56dvgi0mnjegmgrj2qt5usfduu.apps.googleusercontent.com.json',
-        scopes=['https://www.googleapis.com/auth/calendar'],
-        redirect_uri='http://localhost:8000/oauth2callback'
+        scopes=SCOPES,  # Use a variável SCOPES atualizada
+        redirect_uri='https://web-production-42764.up.railway.app/oauth2callback'  # Use HTTPS
     )
 
 @app.get("/login")
