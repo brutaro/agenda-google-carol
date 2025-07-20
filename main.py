@@ -230,14 +230,14 @@ async def processar_comando_voz(request: Request):
                 completion = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
-                        {"role": "system", "content": """Extraia os detalhes do evento do texto em português.
+                        {"role": "system", "content": f"""Extraia os detalhes do evento do texto em português.
                             Regras importantes:
                             1. Para reuniões, o título DEVE começar com 'Reunião com' seguido do nome EXATAMENTE como foi dito
                             2. Preserve títulos e tratamentos (Sr., Sra., Dr., etc.)
                             3. Mantenha nomes compostos e sobrenomes exatamente como mencionados
                             4. Se houver um assunto específico, inclua na descrição
                             5. Para datas:
-                               - Se não especificado o ano, use SEMPRE o ano atual (2025)
+                               - Se não especificado o ano, use SEMPRE o ano atual ({datetime.datetime.now().year})
                                - NUNCA use anos anteriores ao atual
                                - Se um ano for especificado e for anterior ao atual, use o ano atual
                             6. Para horários:
