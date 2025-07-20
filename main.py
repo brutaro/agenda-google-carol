@@ -80,16 +80,16 @@ if os.getenv('GOOGLE_CLIENT_SECRET'):
     
     flow = Flow.from_client_secrets_file(
         client_secrets_file.name,
-        scopes=SCOPES,  # <-- Usar a variável SCOPES que tem todos os escopos necessários
-        redirect_uri=os.getenv('RAILWAY_PUBLIC_DOMAIN', 'http://localhost:8000') + '/oauth2callback'
+        scopes=SCOPES,
+        redirect_uri='https://web-production-42764.up.railway.app/oauth2callback'  # URI fixa para produção
     )
     os.unlink(client_secrets_file.name)  # Remove o arquivo temporário após usar
 else:
     # Fallback para desenvolvimento local
     flow = Flow.from_client_secrets_file(
         'client_secret_208149794146-eqenuk56dvgi0mnjegmgrj2qt5usfduu.apps.googleusercontent.com.json',
-        scopes=SCOPES,  # Use a variável SCOPES atualizada
-        redirect_uri='https://web-production-42764.up.railway.app/oauth2callback'  # Use HTTPS
+        scopes=SCOPES,
+        redirect_uri='http://localhost:8000/oauth2callback'  # URI local para desenvolvimento
     )
 
 @app.get("/login")
