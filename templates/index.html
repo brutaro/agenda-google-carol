@@ -150,105 +150,130 @@
     <script>
         let recognition = null;
         let gravando = false;
-
+        let silenceTimer = null;
+        let finalTranscript = '';
+    
         // Inicializar reconhecimento de voz
         try {
             window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SpeechRecognition();
             recognition.lang = 'pt-BR';
-            recognition.continuous = false;
-            recognition.interimResults = true;  // Habilitar resultados intermediários
-            recognition.maxAlternatives = 1;
+            recognition.continuous = true;  // Mudança: manter contínuo
+            recognition.interimResults = true;
+            recognition.maxAlternatives = 3;  // Mudança: mais alternativas
         
-            let finalTranscript = '';
-            let isFinished = false;
-            let finishTimer = null;
+            recognition.onstart = () => {
+                document.getElementById('status').textContent = '🎤 Ouvindo... Fale claramente.';
+                document.getElementById('status').style.color = '#007bff';
+            };
         
             recognition.onresult = (event) => {
                 let interimTranscript = '';
-                let finalTranscript = '';
-                let silenceTimer = null;
-                const silenceDelay = 2000; // Aumentar para 2 segundos de silêncio
+                finalTranscript = '';
                 
                 for (let i = event.resultIndex; i < event.results.length; i++) {
                     const transcript = event.results[i][0].transcript;
+                    const confidence = event.results[i][0].confidence;
+                    
                     if (event.results[i].isFinal) {
-                        finalTranscript = transcript;
-                        document.getElementById('comandoTexto').value = finalTranscript;
-                        
-                        // Limpar o timer anterior se existir
-                        if (silenceTimer) clearTimeout(silenceTimer);
-                        
-                        // Iniciar novo timer para aguardar silêncio
-                        silenceTimer = setTimeout(() => {
-                            pararGravacao();
-                            setTimeout(() => {
-                                enviarComando();
-                            }, 500);
-                        }, silenceDelay);
+                        // Só aceitar se a confiança for alta
+                        if (confidence > 0.7) {
+                            finalTranscript += transcript;
+                            document.getElementById('comandoTexto').value = finalTranscript.trim();
+                            document.getElementById('status').textContent = `✅ Capturado: "${finalTranscript.trim()}" (Confiança: ${Math.round(confidence * 100)}%)`;
+                            document.getElementById('status').style.color = '#28a745';
+                            
+                            // Resetar timer de silêncio
+                            if (silenceTimer) clearTimeout(silenceTimer);
+                            
+                            // Aguardar 3 segundos de silêncio antes de enviar
+                            silenceTimer = setTimeout(() => {
+                                if (finalTranscript.trim()) {
+                                    pararGravacao();
+                                    setTimeout(() => {
+                                        enviarComando();
+                                    }, 500);
+                                }
+                            }, 3000);
+                        } else {
+                            document.getElementById('status').textContent = `⚠️ Baixa confiança (${Math.round(confidence * 100)}%). Continue falando...`;
+                            document.getElementById('status').style.color = '#ffc107';
+                        }
                     } else {
-                        interimTranscript = transcript;
-                        document.getElementById('comandoTexto').value = 'Ouvindo: ' + interimTranscript;
+                        interimTranscript += transcript;
+                        document.getElementById('comandoTexto').value = `🎤 Ouvindo: ${interimTranscript}`;
                         
-                        // Resetar o timer quando houver nova fala
+                        // Resetar timer quando houver nova fala
                         if (silenceTimer) clearTimeout(silenceTimer);
                     }
                 }
             };
         
-            // Adicionar detecção de silêncio
             recognition.onspeechend = () => {
-                // Aguardar um pouco mais antes de parar
-                setTimeout(() => {
-                    if (gravando) {
-                        pararGravacao();
-                    }
-                }, 1500);
+                // Não parar imediatamente, aguardar o timer de silêncio
             };
         
-            // Melhorar o tratamento de erros
             recognition.onerror = (event) => {
-                if (event.error === 'no-speech') {
-                    document.getElementById('status').textContent = 'Nenhuma fala detectada. Tente novamente.';
-                } else {
-                    console.error('Erro no reconhecimento:', event.error);
-                    document.getElementById('status').textContent = 'Erro no reconhecimento de voz. Tente novamente.';
+                let errorMessage = '';
+                switch(event.error) {
+                    case 'no-speech':
+                        errorMessage = '🔇 Nenhuma fala detectada. Tente falar mais alto.';
+                        break;
+                    case 'audio-capture':
+                        errorMessage = '🎤 Erro no microfone. Verifique as permissões.';
+                        break;
+                    case 'not-allowed':
+                        errorMessage = '❌ Permissão negada. Permita o uso do microfone.';
+                        break;
+                    default:
+                        errorMessage = `❌ Erro: ${event.error}. Tente novamente.`;
                 }
+                document.getElementById('status').textContent = errorMessage;
+                document.getElementById('status').style.color = '#dc3545';
                 pararGravacao();
             };
         
             recognition.onend = () => {
-                if (!isFinished) {
-                    pararGravacao();
+                if (gravando) {
+                    // Reiniciar automaticamente se ainda estiver gravando
+                    setTimeout(() => {
+                        if (gravando) {
+                            recognition.start();
+                        }
+                    }, 100);
                 }
             };
         } catch (e) {
             console.error('Reconhecimento de voz não suportado:', e);
+            document.getElementById('status').textContent = '❌ Reconhecimento de voz não suportado neste navegador.';
         }
-
+    
         function toggleGravacao() {
             if (!recognition) {
                 alert('Seu navegador não suporta reconhecimento de voz.');
                 return;
             }
-
+    
             if (!gravando) {
                 iniciarGravacao();
             } else {
                 pararGravacao();
             }
         }
-
+    
         function iniciarGravacao() {
             gravando = true;
+            finalTranscript = '';
             const btnGravar = document.getElementById('btnGravar');
             btnGravar.classList.add('gravando');
-            btnGravar.innerHTML = '<i class="fas fa-microphone-slash"></i> Gravando...';
+            btnGravar.innerHTML = '<i class="fas fa-microphone-slash"></i> Parar';
+            document.getElementById('comandoTexto').value = '';
             recognition.start();
         }
-
+    
         function pararGravacao() {
             gravando = false;
+            if (silenceTimer) clearTimeout(silenceTimer);
             const btnGravar = document.getElementById('btnGravar');
             btnGravar.classList.remove('gravando');
             btnGravar.innerHTML = '<i class="fas fa-microphone"></i> Gravar';
@@ -256,16 +281,19 @@
                 recognition.stop();
             } catch (e) {}
         }
-
+    
         async function enviarComando() {
             const texto = document.getElementById('comandoTexto').value.trim();
-            if (texto) {
+            if (texto && !texto.startsWith('🎤')) {
+                document.getElementById('status').textContent = '⏳ Processando comando...';
+                document.getElementById('status').style.color = '#6c757d';
                 await enviarComandoVoz(texto);
             } else {
                 document.getElementById('status').textContent = 'Por favor, digite um comando ou use o microfone.';
+                document.getElementById('status').style.color = '#dc3545';
             }
         }
-
+    
         async function enviarComandoVoz(texto) {
             try {
                 const response = await fetch('/comando-voz', {
@@ -279,18 +307,25 @@
                 const data = await response.json();
                 
                 if (data.erro) {
-                    statusDiv.textContent = `Erro: ${data.erro}`;
+                    document.getElementById('status').textContent = `❌ Erro: ${data.erro}`;
+                    document.getElementById('status').style.color = '#dc3545';
                 } else {
-                    statusDiv.textContent = data.mensagem;
-                    await atualizarEventos(); // Atualiza a lista após processar o comando
+                    document.getElementById('status').textContent = `✅ ${data.mensagem}`;
+                    document.getElementById('status').style.color = '#28a745';
+                    await atualizarEventos();
+                    
+                    // Limpar campo após sucesso
+                    setTimeout(() => {
+                        document.getElementById('comandoTexto').value = '';
+                        document.getElementById('status').textContent = 'Pronto para novo comando.';
+                        document.getElementById('status').style.color = '#6c757d';
+                    }, 3000);
                 }
             } catch (error) {
-                statusDiv.textContent = 'Erro ao processar comando.';
+                document.getElementById('status').textContent = '❌ Erro de conexão. Tente novamente.';
+                document.getElementById('status').style.color = '#dc3545';
                 console.error('Erro:', error);
             }
-            
-            // Limpa o campo de texto
-            document.getElementById('comandoTexto').value = '';
         }
 
         async function atualizarEventos() {
