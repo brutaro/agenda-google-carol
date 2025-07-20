@@ -147,7 +147,7 @@ def autenticar_google(request: Request):
     return build('calendar', 'v3', credentials=credentials)
 
 # Primeiro, definir a função criar_evento fora do bloco try-except
-def criar_evento(service, titulo, data_inicio, duracao=30, descricao=''):
+def criar_evento(service, titulo, data_inicio, duracao=60, descricao=''):
     """Cria um evento no Google Calendar"""
     try:
         inicio = datetime.datetime.strptime(data_inicio, "%Y-%m-%d %H:%M")
@@ -263,18 +263,25 @@ REGRAS DE EXTRAÇÃO:
    - Converta: "5 da tarde" = "17:00", "8 da manha" = "08:00"
    - Formato: HH:MM
 
-5. **DURAÇÃO**: ATENÇÃO MÁXIMA!
-   - "1h" = 60 minutos (NUNCA 30!)
+5. **DURAÇÃO**: SEJA FLEXÍVEL!
+   - "1h" = 60 minutos
    - "uma hora" = 60 minutos
-   - "1 hora" = 60 minutos
    - "2h" = 120 minutos
    - "duas horas" = 120 minutos
    - "30min" = 30 minutos
    - "meia hora" = 30 minutos
    - "1h30" = 90 minutos
-   - "duracao 1h" = 60 minutos
-   - Se não especificado: 30 minutos
-   - SEMPRE converta corretamente: 1h = 60, 2h = 120, 30min = 30
+   - "dia inteiro" = 480 minutos (8 horas)
+   - "dia todo" = 480 minutos
+   - "manhã inteira" = 240 minutos (4 horas)
+   - "tarde inteira" = 240 minutos
+   - "3 horas" = 180 minutos
+   - "4h" = 240 minutos
+   - "meio dia" = 360 minutos (6 horas)
+   - "o dia todo" = 480 minutos
+   - Se não especificado: 60 minutos (padrão mais realista)
+   - SEMPRE converta corretamente baseado no que foi dito
+   - Para eventos longos, aceite até 12h (720 minutos)
 
 6. **TÍTULO**: Sempre "Reunião com [participantes completos com títulos]"
 
@@ -302,7 +309,7 @@ RETORNE APENAS ESTE JSON:
     "duracao": numero_em_minutos_CORRETO
 }}
 
-PARA DURAÇÃO: "1h" SEMPRE = 60 minutos (não 30!)"""}
+PARA DURAÇÃO: "1h" SEMPRE = 60 minutos (não 30!)"""},
                         {"role": "user", "content": comando}
                     ]
                 )
