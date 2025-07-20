@@ -264,7 +264,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ comando: texto })
+                    body: JSON.stringify({ texto: texto })  // Mudança aqui: 'comando' para 'texto'
                 });
                 
                 const data = await response.json();
