@@ -63,11 +63,28 @@ def ouvir():
     return texto.lower()
 
 # Configuração do OAuth2
-flow = Flow.from_client_secrets_file(
-    'client_secret_208149794146-eqenuk56dvgi0mnjegmgrj2qt5usfduu.apps.googleusercontent.com.json',
-    scopes=['https://www.googleapis.com/auth/calendar'],
-    redirect_uri=os.getenv('RAILWAY_PUBLIC_DOMAIN', 'http://localhost:8000') + '/oauth2callback'
-)
+if os.getenv('GOOGLE_CLIENT_SECRET'):
+    # Criar arquivo temporário com as credenciais
+    import tempfile
+    import json
+    
+    client_secrets_file = tempfile.NamedTemporaryFile(delete=False)
+    client_secrets_file.write(os.getenv('GOOGLE_CLIENT_SECRET').encode())
+    client_secrets_file.close()
+    
+    flow = Flow.from_client_secrets_file(
+        client_secrets_file.name,
+        scopes=['https://www.googleapis.com/auth/calendar'],
+        redirect_uri=os.getenv('RAILWAY_PUBLIC_DOMAIN', 'http://localhost:8000') + '/oauth2callback'
+    )
+    os.unlink(client_secrets_file.name)  # Remove o arquivo temporário após usar
+else:
+    # Fallback para desenvolvimento local
+    flow = Flow.from_client_secrets_file(
+        'client_secret_208149794146-eqenuk56dvgi0mnjegmgrj2qt5usfduu.apps.googleusercontent.com.json',
+        scopes=['https://www.googleapis.com/auth/calendar'],
+        redirect_uri='http://localhost:8000/oauth2callback'
+    )
 
 @app.get("/login")
 async def login():
