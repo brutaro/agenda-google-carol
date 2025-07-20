@@ -174,12 +174,14 @@ def criar_evento(service, titulo, data_inicio, duracao=30, descricao=''):
         print(f"Erro ao criar evento: {str(e)}")  # Log de erro
         raise e
 
-@app.get("/")
-def read_root():
-    headers = {"ngrok-skip-browser-warning": "true"}
-    return FileResponse("templates/index.html", headers=headers)
+# Remover estas linhas:
+# @app.get("/")
+# def read_root():
+#     headers = {"ngrok-skip-browser-warning": "true"}
+#     return FileResponse("templates/index.html", headers=headers)
+# 
+# # Manter apenas esta versão
 
-# Manter apenas esta versão
 @app.get("/eventos")
 async def listar_eventos_endpoint(request: Request):
     service = autenticar_google(request)
