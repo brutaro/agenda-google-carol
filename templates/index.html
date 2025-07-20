@@ -181,14 +181,16 @@
 
                 document.getElementById('comandoTexto').value = finalTranscript + interimTranscript;
 
-                // Reinicia o timer de silêncio sempre que houver resultado
-                clearTimeout(silenceTimer);
-                silenceTimer = setTimeout(() => {
-                    if (gravando) {
-                        pararGravacao(); // Para a gravação
-                        enviarComando(); // Envia o comando após o silêncio
-                    }
-                }, 3000); // 3 segundos de silêncio
+                // Só reinicia o timer se houver texto final (não apenas interim)
+                if (finalTranscript.trim()) {
+                    clearTimeout(silenceTimer);
+                    silenceTimer = setTimeout(() => {
+                        if (gravando && finalTranscript.trim()) {
+                            pararGravacao();
+                            enviarComando();
+                        }
+                    }, 5000); // Aumentado para 5 segundos
+                }
             };
 
             recognition.onerror = (event) => {
@@ -237,9 +239,18 @@
             const btnGravar = document.getElementById('btnGravar');
             btnGravar.classList.add('gravando');
             btnGravar.innerHTML = '<i class="fas fa-microphone-slash"></i> Parar';
-            recognition.start();
+            
+            // Limpar qualquer timer anterior
+            clearTimeout(silenceTimer);
+            
+            try {
+                recognition.start();
+            } catch (e) {
+                console.error('Erro ao iniciar reconhecimento:', e);
+                pararGravacao();
+            }
         }
-    
+
         function pararGravacao() {
             if (gravando) {
                 gravando = false;
@@ -247,7 +258,15 @@
                 const btnGravar = document.getElementById('btnGravar');
                 btnGravar.classList.remove('gravando');
                 btnGravar.innerHTML = '<i class="fas fa-microphone"></i> Gravar';
-                recognition.stop();
+                
+                try {
+                    recognition.stop();
+                } catch (e) {
+                    console.error('Erro ao parar reconhecimento:', e);
+                }
+                
+                document.getElementById('status').textContent = '✅ Gravação finalizada';
+                document.getElementById('status').style.color = '#28a745';
             }
         }
     
