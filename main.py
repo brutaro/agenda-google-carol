@@ -230,61 +230,42 @@ async def processar_comando_voz(request: Request):
                 completion = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
-                        {"role": "system", "content": f"""Você é um assistente inteligente para agendamento de eventos. Sua tarefa é extrair detalhes de um comando de voz em português e retornar um JSON estruturado.
+                        {"role": "system", "content": f"""Extraia os detalhes do evento do texto em português e retorne APENAS um JSON válido.
 
-                            **Regras de Extração:**
+                            Regras:
+                            1. Título: Se houver participantes, use "Reunião com [nomes]". Senão, use o assunto.
+                            2. Participantes: Lista de nomes mencionados (preserve títulos como Dr., Sra.)
+                            3. Assunto: Tema principal da reunião
+                            4. Data: Use ano atual ({datetime.datetime.now().year}) se não especificado. Formato YYYY-MM-DD
+                            5. Hora: Formato 24h (HH:MM). Se disser "5 da tarde" = "17:00"
+                            6. Duração: Em minutos. "uma hora" = 60, "meia hora" = 30, padrão = 30
 
-                            1.  **Título do Evento (`titulo`):**
-                                *   Se o comando não especificar um título, use o `assunto` como título.
-                                *   Se houver participantes, o título deve ser "Reunião com [Nomes dos Participantes]".
-
-                            2.  **Participantes (`participantes`):**
-                                *   Extraia TODOS os nomes de pessoas mencionadas e retorne como uma lista de strings.
-                                *   Preserve títulos como "Dr.", "Sra.", etc.
-                                *   Se nenhum participante for mencionado, retorne uma lista vazia `[]`.
-
-                            3.  **Assunto (`assunto`):**
-                                *   Capture o tema principal ou a pauta da reunião.
-                                *   Se não houver um assunto claro, use o comando do usuário como `assunto`.
-
-                            4.  **Data e Hora (`data`, `hora`):**
-                                *   Use o ano atual (`{datetime.datetime.now().year}`) se não for especificado.
-                                *   Retorne a data no formato `YYYY-MM-DD` e a hora em `HH:MM` (formato 24h).
-
-                            5.  **Duração (`duracao`):**
-                                *   Extraia a duração em minutos. Converta expressões como "uma hora" para 60, "meia hora" para 30, "uma hora e meia" para 90.
-                                *   Se não for mencionada, o padrão é `30` minutos.
-
-                            **Formato de Saída (JSON):**
-                            Retorne um JSON com os seguintes campos:
-                            -   `titulo`: string
-                            -   `participantes`: list[string]
-                            -   `assunto`: string
-                            -   `data`: string (YYYY-MM-DD)
-                            -   `hora`: string (HH:MM)
-                            -   `duracao`: number (em minutos)
-
-                            **Exemplo:**
-                            Comando: "Agendar uma reunião com Dr. Carlos e a Sra. Ana para amanhã às 15h por uma hora para discutir o projeto X."
-                            JSON esperado:
+                            Retorne APENAS este JSON:
                             {{
-                                "titulo": "Reunião com Dr. Carlos, Sra. Ana",
-                                "participantes": ["Dr. Carlos", "Sra. Ana"],
-                                "assunto": "Discussão do projeto X",
-                                "data": "{datetime.datetime.now().strftime('%Y-%m-%d')}", // Data de amanhã
-                                "hora": "15:00",
-                                "duracao": 60
+                                "titulo": "string",
+                                "participantes": ["lista de nomes"],
+                                "assunto": "string",
+                                "data": "YYYY-MM-DD",
+                                "hora": "HH:MM",
+                                "duracao": numero
                             }}
                             """},
                         {"role": "user", "content": comando}
                     ]
                 )
                 
-                detalhes_str = completion.choices[0].message.content
-                print(f"Detalhes extraídos (string): {detalhes_str}") # Log para depuração
+                detalhes_str = completion.choices[0].message.content.strip()
+                print(f"Resposta da IA: {detalhes_str}")
+                
+                # Extrair apenas o JSON da resposta
+                import re
+                json_match = re.search(r'\{.*\}', detalhes_str, re.DOTALL)
+                if json_match:
+                    detalhes_str = json_match.group()
+                
                 detalhes = json.loads(detalhes_str)
 
-                # Construir o título e a descrição a partir dos detalhes extraídos
+                # Construir o título final
                 titulo_evento = detalhes.get('titulo', '')
                 participantes = detalhes.get('participantes', [])
                 assunto = detalhes.get('assunto', '')
@@ -307,20 +288,21 @@ async def processar_comando_voz(request: Request):
                 
                 evento = criar_evento(
                     service,
-                    titulo_evento, # Usar o título construído
+                    titulo_evento,
                     data_hora,
                     detalhes.get('duracao', 30),
-                    assunto # Usar o assunto como descrição
+                    assunto
                 )
                 
-                # Melhorar a mensagem de retorno
+                # Corrigir a mensagem de retorno
                 inicio = evento['start']['dateTime']
                 fim = evento['end']['dateTime']
                 return {
-                    "mensagem": f"Evento '{detalhes['titulo']}' agendado:\n" +
-                              f"Início: {inicio}\n" +
-                              f"Fim: {fim}\n" +
-                              f"Duração: {detalhes.get('duracao', 30)} minutos"
+                    "mensagem": f"✅ Evento '{titulo_evento}' agendado com sucesso!\n" +
+                              f"📅 Início: {inicio}\n" +
+                              f"⏰ Fim: {fim}\n" +
+                              f"⏱️ Duração: {detalhes.get('duracao', 30)} minutos\n" +
+                              f"📝 Assunto: {assunto}"
                 }
             except Exception as e:
                 return {"erro": f"Erro ao processar o comando: {str(e)}"}
