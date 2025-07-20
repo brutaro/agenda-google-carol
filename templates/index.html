@@ -257,6 +257,15 @@
             } catch (e) {}
         }
 
+        async function enviarComando() {
+            const texto = document.getElementById('comandoTexto').value.trim();
+            if (texto) {
+                await enviarComandoVoz(texto);
+            } else {
+                document.getElementById('status').textContent = 'Por favor, digite um comando ou use o microfone.';
+            }
+        }
+
         async function enviarComandoVoz(texto) {
             try {
                 const response = await fetch('/comando-voz', {
@@ -264,7 +273,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ texto: texto })  // Mudança aqui: 'comando' para 'texto'
+                    body: JSON.stringify({ texto: texto })
                 });
                 
                 const data = await response.json();
