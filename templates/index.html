@@ -168,28 +168,43 @@
 
             recognition.onresult = (event) => {
                 let interimTranscript = '';
-                finalTranscript = '';
-
+                let currentFinalTranscript = '';
+                let confidenceScore = 0;
+                let wordCount = 0;
+            
                 for (let i = event.resultIndex; i < event.results.length; i++) {
-                    const transcript = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) {
-                        finalTranscript += transcript;
+                    const result = event.results[i];
+                    const transcript = result[0].transcript;
+                    const confidence = result[0].confidence || 0;
+                    
+                    if (result.isFinal) {
+                        currentFinalTranscript += transcript;
+                        confidenceScore += confidence;
+                        wordCount++;
                     } else {
                         interimTranscript += transcript;
                     }
                 }
-
-                document.getElementById('comandoTexto').value = finalTranscript + interimTranscript;
-
-                // Só reinicia o timer se houver texto final (não apenas interim)
-                if (finalTranscript.trim()) {
+            
+                // Calcular confiança média
+                const avgConfidence = wordCount > 0 ? confidenceScore / wordCount : 0;
+                
+                // Atualizar display com indicador de confiança
+                const displayText = currentFinalTranscript + interimTranscript;
+                const confidenceIndicator = avgConfidence > 0.7 ? '🟢' : avgConfidence > 0.4 ? '🟡' : '🔴';
+                document.getElementById('comandoTexto').value = displayText;
+                document.getElementById('status').textContent = `🎤 Ouvindo... ${confidenceIndicator} Confiança: ${Math.round(avgConfidence * 100)}%`;
+            
+                // Só processa se tiver confiança mínima e texto final
+                if (currentFinalTranscript.trim() && avgConfidence > 0.4) {
+                    finalTranscript = currentFinalTranscript;
                     clearTimeout(silenceTimer);
                     silenceTimer = setTimeout(() => {
                         if (gravando && finalTranscript.trim()) {
                             pararGravacao();
                             enviarComando();
                         }
-                    }, 5000); // Aumentado para 5 segundos
+                    }, 3000); // Timer otimizado para 3 segundos
                 }
             };
 
@@ -287,32 +302,41 @@
                 const response = await fetch('/comando-voz', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ texto: texto })
+                    body: JSON.stringify({
+                        texto: texto,
+                        confidence: window.lastConfidence || 0.5  // Enviar confiança do ASR
+                    })
                 });
                 
-                const data = await response.json();
+                const resultado = await response.json();
                 
-                if (data.erro) {
-                    document.getElementById('status').textContent = `❌ Erro: ${data.erro}`;
+                if (resultado.erro) {
+                    document.getElementById('status').textContent = `❌ ${resultado.erro}`;
                     document.getElementById('status').style.color = '#dc3545';
+                    
+                    // Mostrar sugestão se disponível
+                    if (resultado.sugestao) {
+                        setTimeout(() => {
+                            document.getElementById('status').textContent += `\n💡 ${resultado.sugestao}`;
+                        }, 2000);
+                    }
                 } else {
-                    document.getElementById('status').textContent = `✅ ${data.mensagem}`;
+                    document.getElementById('status').textContent = resultado.mensagem;
                     document.getElementById('status').style.color = '#28a745';
-                    await atualizarEventos();
                     
                     // Limpar campo após sucesso
-                    setTimeout(() => {
-                        document.getElementById('comandoTexto').value = '';
-                        document.getElementById('status').textContent = 'Pronto para novo comando.';
-                        document.getElementById('status').style.color = '#6c757d';
-                    }, 3000);
+                    document.getElementById('comandoTexto').value = '';
+                    
+                    // Mostrar detalhes de confiança se disponível
+                    if (resultado.confianca) {
+                        console.log('Detalhes da extração:', resultado.detalhes_extraidos);
+                    }
                 }
             } catch (error) {
-                document.getElementById('status').textContent = '❌ Erro de conexão. Tente novamente.';
+                document.getElementById('status').textContent = `❌ Erro de conexão: ${error.message}`;
                 document.getElementById('status').style.color = '#dc3545';
-                console.error('Erro:', error);
             }
         }
 

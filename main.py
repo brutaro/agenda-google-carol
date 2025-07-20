@@ -213,7 +213,6 @@ async def listar_eventos_endpoint(request: Request):
 
 @app.post("/comando-voz")
 async def processar_comando_voz(request: Request):
-    headers = {"ngrok-skip-browser-warning": "true"}
     service = autenticar_google(request)
     if isinstance(service, RedirectResponse):
         return service
@@ -221,16 +220,31 @@ async def processar_comando_voz(request: Request):
     try:
         data = await request.json()
         comando = data.get('texto', '')
+        confianca_asr = data.get('confidence', 0.5)  # Confiança do ASR
         
         if not comando:
             return {"erro": "Nenhum texto fornecido"}
         
+        # Validação de qualidade do input
+        if len(comando.strip()) < 5:
+            return {"erro": "Comando muito curto. Tente falar mais claramente."}
+        
+        if confianca_asr < 0.3:
+            return {"erro": "Qualidade de áudio baixa. Tente novamente em ambiente mais silencioso."}
+        
         if "agendar" in comando.lower() or "marcar" in comando.lower() or "reunião" in comando.lower() or "preciso" in comando.lower():
             try:
-                completion = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": f"""Você é uma secretária virtual especializada em agendar reuniões. Extraia TODOS os detalhes do comando de voz em português brasileiro.
+                # Múltiplas tentativas com diferentes estratégias
+                resultado_final = None
+                melhor_confianca = 0
+                
+                for tentativa in range(2):  # Até 2 tentativas
+                    completion = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": f"""Você é uma secretária virtual especializada em agendar reuniões. Extraia TODOS os detalhes do comando de voz em português brasileiro.
+
+IMPORTANTE: O texto pode conter erros de transcrição. Use inteligência contextual para interpretar.
 
 REGRAS DE EXTRAÇÃO:
 
@@ -239,16 +253,15 @@ REGRAS DE EXTRAÇÃO:
    - "encontro com [nome]", "meeting com [nome]"
    - Qualquer nome após "com o", "com a", "com"
    - PRESERVE TÍTULOS: Sr., Sra., Dr., Dra., Senhor, Senhora, Professor, etc.
+   - CORREÇÕES COMUNS: "senhor" pode ser transcrito como "senior", "silva" como "silva"
    - Exemplo: "Sr. João" → mantenha "Sr. João"
-   - Exemplo: "Senhor Silva" → mantenha "Senhor Silva"
 
 2. **ASSUNTO**: Procure por:
    - "assunto [texto]" (com ou sem dois pontos)
    - "sobre [texto]", "para discutir [texto]", "tema [texto]"
    - "para falar sobre [texto]", "para tratar de [texto]"
    - Palavras após "assunto:", "sobre", "tema", "para discutir"
-   - IMPORTANTE: Extraia TUDO que vem após essas palavras-chave até o final ou próxima informação
-   - Se não encontrar palavras-chave, use o contexto geral da frase
+   - EXTRAIA TUDO que vem após essas palavras-chave
 
 3. **DATA**: Reconheça:
    - "dia X de [mes]" ou "no dia X", "em X de [mes]"
@@ -264,40 +277,25 @@ REGRAS DE EXTRAÇÃO:
    - Formato: HH:MM
 
 5. **DURAÇÃO**: SEJA FLEXÍVEL!
-   - "1h" = 60 minutos
+   - "1h" = 60 minutos (NUNCA 30!)
    - "uma hora" = 60 minutos
    - "2h" = 120 minutos
    - "duas horas" = 120 minutos
    - "30min" = 30 minutos
    - "meia hora" = 30 minutos
-   - "1h30" = 90 minutos
    - "dia inteiro" = 480 minutos (8 horas)
    - "dia todo" = 480 minutos
    - "manhã inteira" = 240 minutos (4 horas)
    - "tarde inteira" = 240 minutos
-   - "3 horas" = 180 minutos
-   - "4h" = 240 minutos
-   - "meio dia" = 360 minutos (6 horas)
-   - "o dia todo" = 480 minutos
-   - Se não especificado: 60 minutos (padrão mais realista)
+   - Se não especificado: 60 minutos (padrão)
    - SEMPRE converta corretamente baseado no que foi dito
-   - Para eventos longos, aceite até 12h (720 minutos)
 
-6. **TÍTULO**: Sempre "Reunião com [participantes completos com títulos]"
+6. **CONFIANÇA**: Adicione um campo "confianca" (0-1) indicando sua certeza na extração
 
 MESES (aceite variações):
 - janeiro/jan=01, fevereiro/fev=02, marco/mar=03, abril/abr=04
 - maio=05, junho/jun=06, julho/jul=07, agosto/ago=08
 - setembro/set=09, outubro/out=10, novembro/nov=11, dezembro/dez=12
-
-EXEMPLOS PRÁTICOS:
-- "reuniao com senhor silva amanha as 2 da tarde assunto vendas duracao 1h"
-  → participantes: ["Senhor Silva"], assunto: "vendas", duracao: 60
-
-- "encontro com dr joao sobre projeto novo dia 15 as 10h por 2 horas"
-  → participantes: ["Dr. João"], assunto: "projeto novo", duracao: 120
-
-SEJA INTELIGENTE: Use o contexto das palavras mesmo sem pontuação perfeita.
 
 RETORNE APENAS ESTE JSON:
 {{
@@ -306,45 +304,77 @@ RETORNE APENAS ESTE JSON:
     "assunto": "assunto extraído COMPLETO",
     "data": "YYYY-MM-DD",
     "hora": "HH:MM",
-    "duracao": numero_em_minutos_CORRETO
+    "duracao": numero_em_minutos_CORRETO,
+    "confianca": 0.0_a_1.0
 }}
 
-PARA DURAÇÃO: "1h" SEMPRE = 60 minutos (não 30!)"""},
-                        {"role": "user", "content": comando}
-                    ]
-                )
+SEJA INTELIGENTE: Use o contexto das palavras mesmo com erros de transcrição."""},
+                            {"role": "user", "content": comando}
+                        ],
+                        temperature=0.1 if tentativa == 0 else 0.3  # Primeira tentativa mais conservadora
+                    )
+                    
+                    detalhes_str = completion.choices[0].message.content.strip()
+                    print(f"Tentativa {tentativa + 1} - Resposta da IA: {detalhes_str}")
+                    
+                    # Extrair JSON
+                    import re
+                    json_match = re.search(r'\{.*\}', detalhes_str, re.DOTALL)
+                    if json_match:
+                        try:
+                            detalhes = json.loads(json_match.group())
+                            confianca_ia = detalhes.get('confianca', 0.5)
+                            
+                            # Validações de qualidade
+                            score_qualidade = calcular_score_qualidade(detalhes, comando)
+                            confianca_final = (confianca_asr + confianca_ia + score_qualidade) / 3
+                            
+                            print(f"Confiança ASR: {confianca_asr}, IA: {confianca_ia}, Qualidade: {score_qualidade}, Final: {confianca_final}")
+                            
+                            if confianca_final > melhor_confianca:
+                                melhor_confianca = confianca_final
+                                resultado_final = detalhes
+                                resultado_final['confianca_final'] = confianca_final
+                                
+                            # Se confiança é alta, para as tentativas
+                            if confianca_final > 0.8:
+                                break
+                                
+                        except json.JSONDecodeError as e:
+                            print(f"Erro ao parsear JSON na tentativa {tentativa + 1}: {e}")
+                            continue
                 
-                detalhes_str = completion.choices[0].message.content.strip()
-                print(f"Resposta completa da IA: {detalhes_str}")
+                if not resultado_final or melhor_confianca < 0.4:
+                    return {
+                        "erro": "Não foi possível extrair informações confiáveis do comando. Tente falar mais claramente.",
+                        "sugestao": "Exemplo: 'Agendar reunião com Sr. Silva amanhã às 14 horas sobre vendas'"
+                    }
                 
-                # Extrair apenas o JSON da resposta
-                import re
-                json_match = re.search(r'\{.*\}', detalhes_str, re.DOTALL)
-                if json_match:
-                    detalhes_str = json_match.group()
+                detalhes = resultado_final
+                print(f"Resultado final (confiança {melhor_confianca:.2f}): {json.dumps(detalhes, indent=2, ensure_ascii=False)}")
                 
-                print(f"JSON extraído: {detalhes_str}")
-                detalhes = json.loads(detalhes_str)
-                print(f"Detalhes parseados: {json.dumps(detalhes, indent=2, ensure_ascii=False)}")
-
-                # Construir o título final
+                # Validação final dos dados extraídos
+                if not validar_dados_evento(detalhes):
+                    return {
+                        "erro": "Dados do evento incompletos ou inválidos.",
+                        "detalhes_extraidos": detalhes,
+                        "sugestao": "Verifique se mencionou participante, data e horário."
+                    }
+                
+                # Construir evento
                 titulo_evento = detalhes.get('titulo', '')
                 participantes = detalhes.get('participantes', [])
                 assunto = detalhes.get('assunto', '')
-                duracao_extraida = detalhes.get('duracao', 30)
-
-                print(f"Assunto extraído: '{assunto}'")
-                print(f"Duração extraída: {duracao_extraida} minutos")
-                print(f"Participantes: {participantes}")
-
+                duracao_extraida = detalhes.get('duracao', 60)
+                
                 if participantes:
                     titulo_evento = f"Reunião com {', '.join(participantes)}"
                 elif not titulo_evento and assunto:
                     titulo_evento = assunto
-
+                
                 data_hora = f"{detalhes['data']} {detalhes['hora']}"
                 
-                # Validar se a data está no formato correto
+                # Validar formato de data
                 try:
                     datetime.datetime.strptime(data_hora, "%Y-%m-%d %H:%M")
                 except ValueError:
@@ -353,30 +383,35 @@ PARA DURAÇÃO: "1h" SEMPRE = 60 minutos (não 30!)"""},
                         return {"erro": "Formato de data inválido"}
                     data_hora = data_hora_convertida
                 
-                print(f"Criando evento com:")
+                print(f"Criando evento com confiança {melhor_confianca:.2f}:")
                 print(f"  Título: '{titulo_evento}'")
                 print(f"  Data/Hora: '{data_hora}'")
                 print(f"  Duração: {duracao_extraida} minutos")
-                print(f"  Descrição/Assunto: '{assunto}'")
+                print(f"  Descrição: '{assunto}'")
                 
                 evento = criar_evento(
                     service,
                     titulo_evento,
                     data_hora,
-                    duracao_extraida,  # Usar a variável específica
+                    duracao_extraida,
                     assunto
                 )
                 
-                # Corrigir a mensagem de retorno
                 inicio = evento['start']['dateTime']
                 fim = evento['end']['dateTime']
+                confianca_display = "🟢 Alta" if melhor_confianca > 0.8 else "🟡 Média" if melhor_confianca > 0.6 else "🔴 Baixa"
+                
                 return {
                     "mensagem": f"✅ Evento '{titulo_evento}' agendado com sucesso!\n" +
                               f"📅 Início: {inicio}\n" +
                               f"⏰ Fim: {fim}\n" +
                               f"⏱️ Duração: {duracao_extraida} minutos\n" +
-                              f"📝 Assunto: {assunto}"
+                              f"📝 Assunto: {assunto}\n" +
+                              f"🎯 Confiança: {confianca_display} ({melhor_confianca:.1%})",
+                    "confianca": melhor_confianca,
+                    "detalhes_extraidos": detalhes
                 }
+                
             except Exception as e:
                 return {"erro": f"Erro ao processar o comando: {str(e)}"}
         
@@ -501,3 +536,53 @@ if __name__ == '__main__':
     import uvicorn
     port = int(os.getenv('PORT', 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+def calcular_score_qualidade(detalhes, comando_original):
+    """Calcula score de qualidade baseado na consistência dos dados extraídos"""
+    score = 0.5  # Base
+    
+    # Verificar se campos obrigatórios estão presentes
+    if detalhes.get('data') and detalhes.get('hora'):
+        score += 0.2
+    
+    if detalhes.get('participantes') or detalhes.get('assunto'):
+        score += 0.2
+    
+    # Verificar consistência com comando original
+    comando_lower = comando_original.lower()
+    if detalhes.get('participantes'):
+        for participante in detalhes['participantes']:
+            if any(palavra in comando_lower for palavra in participante.lower().split()):
+                score += 0.1
+                break
+    
+    if detalhes.get('assunto'):
+        palavras_assunto = detalhes['assunto'].lower().split()
+        if any(palavra in comando_lower for palavra in palavras_assunto if len(palavra) > 3):
+            score += 0.1
+    
+    return min(score, 1.0)
+
+def validar_dados_evento(detalhes):
+    """Valida se os dados extraídos são suficientes para criar um evento"""
+    # Campos obrigatórios
+    if not detalhes.get('data') or not detalhes.get('hora'):
+        return False
+    
+    # Pelo menos um identificador (participante ou assunto)
+    if not detalhes.get('participantes') and not detalhes.get('assunto'):
+        return False
+    
+    # Validar formato de data
+    try:
+        datetime.datetime.strptime(detalhes['data'], "%Y-%m-%d")
+    except ValueError:
+        return False
+    
+    # Validar formato de hora
+    try:
+        datetime.datetime.strptime(detalhes['hora'], "%H:%M")
+    except ValueError:
+        return False
+    
+    return True
