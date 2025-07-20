@@ -225,31 +225,72 @@ async def processar_comando_voz(request: Request):
         if not comando:
             return {"erro": "Nenhum texto fornecido"}
         
-        if "agendar" in comando.lower() or "marcar" in comando.lower() or "reunião" in comando.lower():
+        if "agendar" in comando.lower() or "marcar" in comando.lower() or "reunião" in comando.lower() or "preciso" in comando.lower():
             try:
                 completion = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
-                        {"role": "system", "content": f"""Extraia os detalhes do evento do texto em português e retorne APENAS um JSON válido.
+                        {"role": "system", "content": f"""Você é uma secretária virtual inteligente. Analise o comando em português e extraia TODOS os detalhes para agendar um evento.
 
-                            Regras:
-                            1. Título: Se houver participantes, use "Reunião com [nomes]". Senão, use o assunto.
-                            2. Participantes: Lista de nomes mencionados (preserve títulos como Dr., Sra.)
-                            3. Assunto: Tema principal da reunião
-                            4. Data: Use ano atual ({datetime.datetime.now().year}) se não especificado. Formato YYYY-MM-DD
-                            5. Hora: Formato 24h (HH:MM). Se disser "5 da tarde" = "17:00"
-                            6. Duração: Em minutos. "uma hora" = 60, "meia hora" = 30, padrão = 30
+IMPORTANTE: O texto vem de reconhecimento de voz, então pode ter erros de pontuação, acentos ou grafia.
 
-                            Retorne APENAS este JSON:
-                            {{
-                                "titulo": "string",
-                                "participantes": ["lista de nomes"],
-                                "assunto": "string",
-                                "data": "YYYY-MM-DD",
-                                "hora": "HH:MM",
-                                "duracao": numero
-                            }}
-                            """},
+EXEMPLO: "Ola preciso de uma reuniao com o Sr Rogerio no dia 25 de outubro as 17 horas assunto Senhora Rogeria duracao 1h"
+
+REGRAS DE EXTRAÇÃO (FLEXÍVEIS PARA VOZ):
+
+1. **PARTICIPANTES**: Procure por:
+   - "reuniao com [nome]" ou "reunião com [nome]"
+   - "encontro com [nome]"
+   - "meeting com [nome]"
+   - Qualquer nome após "com o", "com a", "com"
+   - Preserve títulos: Sr, Sra, Dr, Dra (com ou sem pontos)
+
+2. **ASSUNTO**: Procure por:
+   - "assunto [texto]" (com ou sem dois pontos)
+   - "sobre [texto]"
+   - "para discutir [texto]"
+   - "tema [texto]"
+   - Palavras após "assunto", "sobre", "tema"
+
+3. **DATA**: Reconheça:
+   - "dia X de [mes]" ou "no dia X"
+   - "em X de [mes]"
+   - "amanha", "hoje", "proxima semana"
+   - Use ano atual: {datetime.datetime.now().year}
+   - Formato: YYYY-MM-DD
+
+4. **HORÁRIO**: Reconheça:
+   - "as X horas", "as Xh", "X horas"
+   - "X da manha/tarde/noite"
+   - "meio dia", "meia noite"
+   - Converta: "5 da tarde" = "17:00", "8 da manha" = "08:00"
+   - Formato: HH:MM
+
+5. **DURAÇÃO**: Reconheça:
+   - "1h", "uma hora", "1 hora" = 60 minutos
+   - "30min", "meia hora", "30 minutos" = 30 minutos
+   - "2h", "duas horas", "2 horas" = 120 minutos
+   - "duracao X" (com ou sem dois pontos)
+   - Padrão: 30 minutos
+
+6. **TÍTULO**: Sempre "Reunião com [participantes]"
+
+MESES (aceite variações):
+- janeiro/jan=01, fevereiro/fev=02, marco/mar=03, abril/abr=04
+- maio=05, junho/jun=06, julho/jul=07, agosto/ago=08
+- setembro/set=09, outubro/out=10, novembro/nov=11, dezembro/dez=12
+
+SEJA INTELIGENTE: Se não encontrar pontuação exata, use o contexto das palavras.
+
+RETORNE APENAS ESTE JSON:
+{{
+    "titulo": "Reunião com [participantes]",
+    "participantes": ["lista de nomes completos"],
+    "assunto": "assunto extraído",
+    "data": "YYYY-MM-DD",
+    "hora": "HH:MM",
+    "duracao": numero_em_minutos
+}}"""},
                         {"role": "user", "content": comando}
                     ]
                 )
